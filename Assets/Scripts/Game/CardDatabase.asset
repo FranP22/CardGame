@@ -1,0 +1,51 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: da99b136389040c4c93bcf1915b6285f, type: 3}
+  m_Name: CardDatabase
+  m_EditorClassIdentifier: 
+  championsCards:
+  - cardInfo:
+      name: Test
+      cardType: 0
+      cardElement: 0
+      cardClasses: 02000000
+      mana: 3
+      currentMana: 0
+    allyStats:
+      attack: 0
+      health: 30
+      currentAttack: 0
+      currentHealth: 0
+    keyWords: []
+    effects: []
+  equipmentCards: []
+  magicCards: []
+  allyCards:
+  - cardInfo:
+      name: Test
+      cardType: 1
+      cardElement: 0
+      cardClasses: 
+      mana: 0
+      currentMana: 0
+    allyStats:
+      attack: 1
+      health: 5
+      currentAttack: 0
+      currentHealth: 0
+    keyWords: []
+    effects:
+    - trigger: 6
+      target: 4
+      effect: 0
+      amount: 1
+  summonCards: []
