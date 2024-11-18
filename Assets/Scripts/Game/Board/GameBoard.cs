@@ -1,6 +1,7 @@
 using System;
 using System.Collections;
 using System.Collections.Generic;
+using TMPro;
 using Unity.Netcode;
 using UnityEngine;
 
@@ -9,11 +10,14 @@ public class GameBoard : NetworkBehaviour
     public static GameBoard instance;
 
     public GameObject fcardPrefab;
+    public GameObject ecardPrefab;
 
     public NetworkObject allies1, allies2;
     public NetworkObject champion1, champion2;
-    public int sizeFromEdge = 200;
-    public int sizeBetweenCards = 50;
+    public TextMeshProUGUI mana1, mana2;
+    public TextMeshProUGUI exp1, exp2, level1, level2;
+    public int sizeFromEdge = 50;
+    public int sizeBetweenCards = 30;
 
     private void Awake()
     {
@@ -33,11 +37,11 @@ public class GameBoard : NetworkBehaviour
         CreateAlliesWidth_ServerRpc();
     }
 
-    [Rpc(SendTo.Server)]
-    private void Pr_ServerRpc()
+    /*[Rpc(SendTo.Server)]
+    private void UpdateMana_ServerRpc(player)
     {
-        Debug.Log(allies1.transform.childCount);
-    }
+
+    }*/
 
     [Rpc(SendTo.Server)]
     private void CreateAlliesWidth_ServerRpc()
@@ -45,10 +49,49 @@ public class GameBoard : NetworkBehaviour
         RectTransform rect1 = allies1.GetComponent<RectTransform>();
         RectTransform rect2 = allies2.GetComponent<RectTransform>();
 
-        float size = GameManager.instance.fieldAllyAmount * 300 + (GameManager.instance.fieldAllyAmount - 1) * sizeBetweenCards + sizeFromEdge;
+        float size = GameManager.instance.fieldAllyAmount * 200 + (GameManager.instance.fieldAllyAmount - 1) * sizeBetweenCards + sizeFromEdge;
 
-        rect1.sizeDelta = new Vector2(size, 350);
-        rect2.sizeDelta = new Vector2(size, 350);
+        rect1.sizeDelta = new Vector2(size, 250);
+        rect2.sizeDelta = new Vector2(size, 250);
+    }
+
+    [Rpc(SendTo.Server)]
+    public void UpdateMana_ServerRpc(NetworkObjectReference player, int id = 0)
+    {
+        int maxMana = ((NetworkObject)player).GetComponent<PlayerController>().maxMana.Value;
+        int currentMana = ((NetworkObject)player).GetComponent<PlayerController>().currentMana.Value;
+        if (id == 1)
+        {
+            mana1.text = currentMana + "/" + maxMana;
+        }
+        if(id == 2)
+        {
+            mana2.text = currentMana + "/" + maxMana;
+        }
+        return;
+    }
+
+    [Rpc(SendTo.Server)]
+    public void UpdateExp_ServerRpc(NetworkObjectReference player, int id = 0)
+    {
+        int level = ((NetworkObject)player).GetComponent<PlayerController>().level.Value;
+        int exp = ((NetworkObject)player).GetComponent<PlayerController>().experience.Value;
+        int expReq = PlayerLevel.GetRequiredExp(level);
+
+        string expText = level < 5 ? exp.ToString() + "/" + expReq.ToString() : exp.ToString();
+
+        Debug.Log(expText);
+        if (id == 1)
+        {
+            level1.text = level.ToString();
+            exp1.text = expText;
+        }
+        if (id == 2)
+        {
+            level2.text = level.ToString();
+            exp2.text = expText;
+        }
+        return;
     }
 
     [Rpc(SendTo.Server)]
@@ -62,7 +105,7 @@ public class GameBoard : NetworkBehaviour
                 PlayCardChampion(cardId, player, playerRef);
                 break;
             case CardType.Equipment:
-                //PlayCardEquip(card, player, playerRef);
+                PlayCardEquip(cardId, player, playerRef);
                 break;
             case CardType.Minion:
                 PlayCardMinion(type, cardId, player, playerRef, handId);
@@ -74,7 +117,7 @@ public class GameBoard : NetworkBehaviour
                 //PlayCardMagic(card, player, playerRef);
                 break;
             default:
-                pc.PlayCardCallBack(CardPlaySuccess.Fail);
+                pc.PlayCardCallBack_ServerRpc(CardPlaySuccess.Fail);
                 return;
         }
 
@@ -99,11 +142,24 @@ public class GameBoard : NetworkBehaviour
         champion.transform.SetParent(championZone.transform);
         champion.transform.rotation = Quaternion.Euler(90, 0, 0);
         champion.transform.position = championZone.transform.position;
+
+        pc.SetChampion_ServerRpc(champion);
         return;
     }
 
     private void PlayCardEquip(int cardId, int player, NetworkObjectReference playerRef, int handId = -1)
     {
+        PlayerController pc = ((NetworkObject)playerRef).GetComponent<PlayerController>();
+
+        GameObject equip = Instantiate(ecardPrefab);
+
+        equip.GetComponent<NetworkObject>().Spawn(true);
+
+        CardObjectEquip equipScript = equip.GetComponent<CardObjectEquip>();
+        equipScript.CreateCard(cardId);
+        equipScript.SetPlayerRef(playerRef);
+
+        equipScript.StartEffectTrigger(EffectTrigger.OnEquip);
         return;
     }
 
@@ -114,7 +170,7 @@ public class GameBoard : NetworkBehaviour
         NetworkObject field = GetAllyField(player);
         if (field.transform.GetChild(0).childCount == GameManager.instance.fieldAllyAmount)
         {
-            pc.PlayCardCallBack(CardPlaySuccess.NotEnoughRoom);
+            pc.PlayCardCallBack_ServerRpc(CardPlaySuccess.NotEnoughRoom);
             return;
         }
 
@@ -128,7 +184,7 @@ public class GameBoard : NetworkBehaviour
         minion.transform.SetParent(field.transform.GetChild(0));
         minion.transform.rotation = Quaternion.Euler(90, 0, 0);
 
-        pc.PlayCardCallBack(CardPlaySuccess.Success, handId);
+        pc.PlayCardCallBack_ServerRpc(CardPlaySuccess.Success, handId);
 
         minionScript.StartEffectTrigger(EffectTrigger.OnEnter);
         return;
@@ -179,13 +235,16 @@ public class GameBoard : NetworkBehaviour
 
     public int GetCardBoardId(NetworkObjectReference card)
     {
-        for(int i = 0; i < allies1.transform.GetChild(0).childCount; i++)
+        if (card.Equals(champion1.transform.GetChild(0).gameObject)) return 1;
+        for (int i = 0; i < allies1.transform.GetChild(0).childCount; i++)
         {
             if (card.Equals(allies1.transform.GetChild(0).GetChild(i).gameObject))
             {
                 return 1;
             }
         }
+
+        if (card.Equals(champion2.transform.GetChild(0).gameObject)) return 2;
         for (int i = 0; i < allies2.transform.GetChild(0).childCount; i++)
         {
             if (card.Equals(allies2.transform.GetChild(0).GetChild(i).gameObject))
@@ -193,6 +252,7 @@ public class GameBoard : NetworkBehaviour
                 return 2;
             }
         }
+
         return 0;
     }
 

@@ -23,6 +23,9 @@ public class CardObjectField : NetworkBehaviour
     private GameObject image;
     private RawImage imageComponent;
 
+    [SerializeField]
+    private GameObject attackBorder;
+
     public TextMeshProUGUI attackText;
     public TextMeshProUGUI healthText;
 
@@ -41,8 +44,21 @@ public class CardObjectField : NetworkBehaviour
 
     public void UpdateCard()
     {
-        attackText.text = card.Value.allyStats.currentAttack.ToString();
+        attackText.text = card.Value.allyStats.attack.ToString();
         healthText.text = card.Value.allyStats.currentHealth.ToString();
+        AttackBorderUpdate();
+    }
+
+    public void AttackBorderUpdate()
+    {
+        if(attacksLeft.Value > 0 && card.Value.allyStats.attack > 0)
+        {
+            attackBorder.SetActive(true);
+        }
+        else
+        {
+            attackBorder.SetActive(false);
+        }
     }
 
     public void CreateCard(CardType type, int id)
@@ -123,6 +139,13 @@ public class CardObjectField : NetworkBehaviour
     {
         card.Value.allyStats.currentHealth -= amount;
 
+        if(card.Value.allyStats.currentHealth <= 0 && card.Value.cardInfo.cardType == CardType.Champion)
+        {
+            NetworkObjectReference player = GameController.instance.GetCardPlayerRef(gameObject);
+            GameController.instance.Defeat_ServerRpc(player);
+            return;
+        }
+
         CardObjectField sourceScript = ((NetworkObject)source).GetComponent<CardObjectField>();
         if(amount > 0)
         {
@@ -164,7 +187,7 @@ public class CardObjectField : NetworkBehaviour
         {
             if (effects[i].trigger == trigger)
             {
-                TriggerEffect(effects[i]);
+                CardUtilities.TriggerEffect(gameObject, effects[i]);
             }
         }
     }
@@ -193,68 +216,34 @@ public class CardObjectField : NetworkBehaviour
         }
     }
 
-    public void TriggerEffect(CardEffect effect)
+    public void Equip(NetworkObjectReference equip)
     {
-        List<NetworkObjectReference> targets = new List<NetworkObjectReference>();
+        if (card.Value.cardInfo.cardType != CardType.Champion) return;
 
-        switch (effect.target)
-        {
-            case EffectTarget.Player:
-                targets.Add(GameController.instance.GetCardPlayerRef(gameObject));
-                break;
+        EquipCard c = ((NetworkObject)equip).GetComponent<CardObjectEquip>().card.Value;
+        card.Value.allyStats.attack += c.equipStats.attack;
+        card.Value.allyStats.health += c.equipStats.health;
+        card.Value.allyStats.currentHealth += c.equipStats.health;
 
-            case EffectTarget.EnemyPlayer:
-                targets.Add(GameController.instance.GetCardPlayerRef(gameObject, true));
-                break;
+        ((NetworkObject)player.Value).GetComponent<PlayerController>().maxMana.Value += c.equipStats.mana;
 
-            case EffectTarget.BothPlayers:
-                targets.Add(GameController.instance.GetCardPlayerRef(gameObject, false));
-                targets.Add(GameController.instance.GetCardPlayerRef(gameObject, true));
-                break;
-
-            default:
-                return;
-        }
-
-        DoEffect(targets, effect);
+        card.Value.keyWords.AddRange(c.keyWords);
     }
 
-    private void DoEffect(List<NetworkObjectReference> targets, CardEffect effect)
+    public void Unequip(NetworkObjectReference equip)
     {
-        for(int i = 0;i < targets.Count; i++)
+        if (card.Value.cardInfo.cardType != CardType.Champion) return;
+
+        EquipCard c = ((NetworkObject)equip).GetComponent<CardObjectEquip>().card.Value;
+        card.Value.allyStats.attack -= c.equipStats.attack;
+        card.Value.allyStats.health -= c.equipStats.health;
+        card.Value.allyStats.currentHealth -= c.equipStats.health;
+
+        ((NetworkObject)player.Value).GetComponent<PlayerController>().maxMana.Value -= c.equipStats.mana;
+
+        foreach(CardKeyWord keyword in c.keyWords)
         {
-            NetworkObject target = (NetworkObject) targets[i];
-
-            if(effect.target == EffectTarget.Player || effect.target == EffectTarget.EnemyPlayer || effect.target == EffectTarget.BothPlayers)
-            {
-                var targetScript = target.GetComponent<PlayerController>();
-                switch (effect.effect)
-                {
-                    case Effect.Draw:
-                        targetScript.DrawCard_ServerRpc(effect.amount);
-                        break;
-
-                    default:
-                        continue;
-                }
-            }
-            else
-            {
-                var targetScript = target.GetComponent<CardObjectField>();
-                switch (effect.effect)
-                {
-                    case Effect.Heal:
-                        targetScript.Heal(gameObject, effect.amount);
-                        break;
-
-                    case Effect.Damage:
-                        targetScript.Damage(gameObject, effect.amount);
-                        break;
-
-                    default:
-                        continue;
-                }
-            }
+            card.Value.keyWords.Remove(keyword);
         }
     }
 }

@@ -4,6 +4,7 @@ using System.Collections;
 using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
 using System.IO;
+using System.Linq;
 using Unity.Collections.LowLevel.Unsafe;
 using Unity.Netcode;
 using UnityEditor;
@@ -43,6 +44,11 @@ public struct CardInfo : INetworkSerializable
         this.cardClasses = new List<CardClass>(copy.cardClasses);
         this.mana = copy.mana;
         this.currentMana = copy.currentMana;
+    }
+
+    public void SetId(int id)
+    {
+        this.id = id;
     }
 
     public int GetId()
@@ -134,6 +140,43 @@ public struct CardAllyStats : INetworkSerializable
             writer.WriteValueSafe(health);
             writer.WriteValueSafe(currentAttack);
             writer.WriteValueSafe(currentHealth);
+        }
+    }
+}
+
+[System.Serializable]
+public struct CardEquipStats : INetworkSerializable
+{
+    public int attack;
+    public int health;
+    public int mana;
+    public int armor;
+
+    public CardEquipStats(CardEquipStats copy)
+    {
+        this.attack = copy.attack;
+        this.health = copy.health;
+        this.mana = copy.mana;
+        this.armor = copy.armor;
+    }
+
+    public void NetworkSerialize<T>(BufferSerializer<T> serializer) where T : IReaderWriter
+    {
+        if (serializer.IsReader)
+        {
+            var reader = serializer.GetFastBufferReader();
+            reader.ReadValueSafe(out attack);
+            reader.ReadValueSafe(out health);
+            reader.ReadValueSafe(out mana);
+            reader.ReadValueSafe(out armor);
+        }
+        else
+        {
+            var writer = serializer.GetFastBufferWriter();
+            writer.WriteValueSafe(attack);
+            writer.WriteValueSafe(health);
+            writer.WriteValueSafe(mana);
+            writer.WriteValueSafe(armor);
         }
     }
 }
@@ -421,17 +464,92 @@ public class ChampionCard : AllyCard, IEquatable<ChampionCard>
 }
 
 [System.Serializable]
-public class EquipCard : Card
+public class EquipCard : Card, IEquatable<EquipCard>
 {
+    public int levelReq;
+    public CardEquipStats equipStats;
+    public List<CardKeyWord> keyWords = new List<CardKeyWord>();
+    public List<CardEffect> effects = new List<CardEffect>();
+
+    public EquipCard EquipClone()
+    {
+        EquipCard other = (EquipCard)MemberwiseClone();
+        other.cardInfo = new CardInfo(cardInfo);
+        other.levelReq = levelReq;
+        other.equipStats = new CardEquipStats(equipStats);
+        other.keyWords = new List<CardKeyWord>();
+        other.effects = new List<CardEffect>();
+
+        foreach (CardKeyWord keyword in keyWords)
+        {
+            other.keyWords.Add(keyword);
+        }
+
+        foreach (CardEffect effect in effects)
+        {
+            other.effects.Add(new CardEffect(effect));
+        }
+
+        return other;
+    }
+
     public override void ReadValues(FastBufferReader reader)
     {
         base.ReadValues(reader);
+
+        reader.ReadValueSafe(out levelReq);
+        reader.ReadValueSafe(out equipStats);
+
+        ushort keywordsCount = 0;
+        reader.ReadValueSafe(out keywordsCount);
+        List<CardKeyWord> keywordList = new List<CardKeyWord>();
+        for (int i = 0; i < keywordsCount; i++)
+        {
+            CardKeyWord keyWord;
+            reader.ReadValueSafe<CardKeyWord>(out keyWord);
+            keywordList.Add(keyWord);
+        }
+        keyWords = keywordList;
+
+        ushort effectsCount = 0;
+        reader.ReadValueSafe(out effectsCount);
+        List<CardEffect> effectsList = new List<CardEffect>();
+        for (int i = 0; i < effectsCount; i++)
+        {
+            CardEffect effect;
+            reader.ReadValueSafe<CardEffect>(out effect);
+            effectsList.Add(effect);
+        }
+        effects = effectsList;
     }
 
     public override void WriteValues(FastBufferWriter writer)
     {
         base.WriteValues(writer);
 
+        writer.WriteValueSafe(levelReq);
+        writer.WriteValueSafe(equipStats);
+
+        ushort keywordsCount = (ushort)keyWords.Count;
+        writer.WriteValueSafe(keywordsCount);
+        for (int i = 0; i < keywordsCount; i++)
+        {
+            CardKeyWord keyWord = keyWords[i];
+            writer.WriteValueSafe<CardKeyWord>(keyWord);
+        }
+
+        ushort effectsCount = (ushort)effects.Count;
+        writer.WriteValueSafe(effectsCount);
+        for (int i = 0; i < effectsCount; i++)
+        {
+            CardEffect effect = effects[i];
+            writer.WriteValueSafe<CardEffect>(effect);
+        }
+    }
+
+    public bool Equals(EquipCard other)
+    {
+        return (cardInfo.GetId() == other.cardInfo.GetId() && cardInfo.cardType == other.cardInfo.cardType);
     }
 }
 
@@ -476,5 +594,123 @@ public class MagicCard : Card
             CardSpell s = effects[i];
             writer.WriteValueSafe<CardSpell>(s);
         }
+    }
+}
+
+public class CardUtilities
+{
+    public static void TriggerEffect(NetworkObjectReference cardStarted, CardEffect effect)
+    {
+        List<NetworkObjectReference> targets = new List<NetworkObjectReference>();
+
+        switch (effect.target)
+        {
+            case EffectTarget.Player:
+                targets.Add(GameController.instance.GetCardPlayerRef(cardStarted));
+                break;
+
+            case EffectTarget.EnemyPlayer:
+                targets.Add(GameController.instance.GetCardPlayerRef(cardStarted, true));
+                break;
+
+            case EffectTarget.BothPlayers:
+                targets.Add(GameController.instance.GetCardPlayerRef(cardStarted, false));
+                targets.Add(GameController.instance.GetCardPlayerRef(cardStarted, true));
+                break;
+
+            default:
+                return;
+        }
+
+        DoEffect(cardStarted, targets, effect);
+    }
+
+    private static void DoEffect(NetworkObjectReference cardStarted, List<NetworkObjectReference> targets, CardEffect effect)
+    {
+        for (int i = 0; i < targets.Count; i++)
+        {
+            NetworkObject target = (NetworkObject)targets[i];
+
+            if (effect.target == EffectTarget.Player || effect.target == EffectTarget.EnemyPlayer || effect.target == EffectTarget.BothPlayers)
+            {
+                var targetScript = target.GetComponent<PlayerController>();
+                switch (effect.effect)
+                {
+                    case Effect.Draw:
+                        targetScript.DrawCard_ServerRpc(effect.amount);
+                        break;
+
+                    default:
+                        continue;
+                }
+            }
+            else
+            {
+                var targetScript = target.GetComponent<CardObjectField>();
+                switch (effect.effect)
+                {
+                    case Effect.Heal:
+                        targetScript.Heal(cardStarted, effect.amount);
+                        break;
+
+                    case Effect.Damage:
+                        targetScript.Damage(cardStarted, effect.amount);
+                        break;
+
+                    default:
+                        continue;
+                }
+            }
+        }
+    }
+
+    public static string CreateText(Card card)
+    {
+        string str = "";
+
+        switch (card.cardInfo.cardType)
+        {
+            case CardType.Equipment:
+                EquipCard ec = card as EquipCard;
+                int attack = ec.equipStats.attack;
+                int health = ec.equipStats.health;
+                int armor = ec.equipStats.armor;
+                int mana = ec.equipStats.mana;
+
+                if (attack == 0 && health == 0 && armor == 0 && mana == 0) break;
+                str += "<b>On Equip: </b>";
+                Debug.Log(str);
+
+                if(attack != 0)
+                {
+                    str += attack + " <sprite=36>";
+                }
+                if (health != 0)
+                {
+                    str += health + " <sprite=10>";
+                }
+                if (armor != 0)
+                {
+                    str += armor + " <sprite=33>";
+                }
+                if (mana != 0)
+                {
+                    str += mana + " <sprite=25>";
+                }
+
+                break;
+        }
+
+        /*switch (effect.trigger)
+        {
+            case EffectTrigger.OnEquip:
+                break;
+            case EffectTrigger.OnUnequip:
+                break;
+            case EffectTrigger.OnEnter:
+                break;
+        }*/
+
+        return str;
     }
 }

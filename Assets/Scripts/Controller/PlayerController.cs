@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using Unity.Netcode;
@@ -15,9 +16,16 @@ public class PlayerController : NetworkBehaviour
     private NetworkVariable<bool> AI = new NetworkVariable<bool>(false);
 
     [HideInInspector]
+    public NetworkVariable<NetworkObjectReference> champion = new NetworkVariable<NetworkObjectReference>();
+
+    [HideInInspector]
     public NetworkVariable<int> maxMana = new NetworkVariable<int>(0);
     [HideInInspector]
     public NetworkVariable<int> currentMana = new NetworkVariable<int>(0);
+    [HideInInspector]
+    public NetworkVariable<int> level = new NetworkVariable<int>(0);
+    [HideInInspector]
+    public NetworkVariable<int> experience = new NetworkVariable<int>(0);
 
     [SerializeField]
     private GameObject camera;
@@ -28,17 +36,30 @@ public class PlayerController : NetworkBehaviour
     private GameObject objectClicked1 = null;
     private GameObject objectClicked2 = null;
 
+    [HideInInspector]
+    public NetworkVariable<bool> isSelecting = new NetworkVariable<bool>(false);
+
+    public bool IsAI()
+    {
+        return AI.Value;
+    }
+
     void Update()
     {
-        //Debug.Log(deck.Value.cards.Count);
         if (!IsOwner) return;
 
-        if (Input.GetKeyDown(KeyCode.Escape) && !AI.Value)
+        if (Input.GetKeyDown(KeyCode.Escape) && !AI.Value && !isSelecting.Value)
         {
             GameController.instance.EndTurn_ServerRpc(gameObject);
         }
 
-        if (Input.GetMouseButtonDown(0) && !AI.Value)
+        if (Input.GetKeyDown(KeyCode.Space) && !AI.Value && !isSelecting.Value)
+        {
+            Debug.Log(gameObject.GetComponent<NetworkObject>().OwnerClientId);
+            GameController.instance.Defeat_ServerRpc(gameObject);
+        }
+
+        if (Input.GetMouseButtonDown(0) && !AI.Value && !isSelecting.Value)
         {
             GameObject obj = HitDetect();
             if(obj != null)
@@ -47,7 +68,7 @@ public class PlayerController : NetworkBehaviour
             }
         }
 
-        if (Input.GetMouseButtonUp(0) && !AI.Value)
+        if (Input.GetMouseButtonUp(0) && !AI.Value && !isSelecting.Value)
         {
             GameObject obj = HitDetect();
             if (obj != null)
@@ -84,15 +105,19 @@ public class PlayerController : NetworkBehaviour
 
         Debug.Log((pSelf == (NetworkObject)player) + " " + (pEnemy != (NetworkObject)player));
 
-        //GameController.instance.CardCombat_ServerRpc(player, ob1, ob2);
-
         if (pSelf == (NetworkObject)player && pEnemy != (NetworkObject)player)
         {
-            if(((NetworkObject)ob1).GetComponent<CardObjectField>().attacksLeft.Value >= 1)
+            CardObjectField c = ((NetworkObject)ob1).GetComponent<CardObjectField>();
+
+            if(c.card.Value.allyStats.attack == 0)
+            {
+                CombatCallBack(CardBattleSuccess.ZeroAttack);
+                return;
+            }
+
+            if(c.attacksLeft.Value >= 1)
             {
                 GameController.instance.CardCombat_ServerRpc(gameObject, ob1, ob2);
-                //((NetworkObject)ob1).GetComponent<CardObjectField>().attacksLeft.Value--;
-                //CombatCallBack(CardBattleSuccess.Success);
             }
             else
             {
@@ -107,7 +132,7 @@ public class PlayerController : NetworkBehaviour
 
     public void CombatCallBack(CardBattleSuccess success)
     {
-
+        Debug.Log(success.ToString());
     }
 
     public override void OnNetworkSpawn()
@@ -121,12 +146,30 @@ public class PlayerController : NetworkBehaviour
             deck.OnValueChanged += DeckValueChanged;
             hand.OnValueChanged += HandValueChanged;
 
+            maxMana.OnValueChanged += ManaValueChanged;
+            currentMana.OnValueChanged += ManaValueChanged;
+
+            level.OnValueChanged += ExpValueChanged;
+            experience.OnValueChanged += ExpValueChanged;
+
             CreateUI_OwnerRpc();
         }
         else
         {
             this.enabled = false;
         }
+    }
+
+    private void OnApplicationQuit()
+    {
+        deck.OnValueChanged -= DeckValueChanged;
+        hand.OnValueChanged -= HandValueChanged;
+
+        maxMana.OnValueChanged -= ManaValueChanged;
+        currentMana.OnValueChanged -= ManaValueChanged;
+
+        level.OnValueChanged -= ExpValueChanged;
+        experience.OnValueChanged -= ExpValueChanged;
     }
 
     [Rpc(SendTo.Server)]
@@ -152,10 +195,63 @@ public class PlayerController : NetworkBehaviour
     }
 
     [Rpc(SendTo.Server)]
-    public void StartGame_ServerRpc()
+    public void StartGame_ServerRpc(bool isFirstTurn = false)
     {
         GameController.instance.PlayCard_ServerRpc(gameObject, CardType.Champion, deck.Value.champion.cardInfo.GetId());
+        maxMana.Value = deck.Value.champion.cardInfo.mana;
+
+        level.Value = 1;
+        //ExpValueChanged(0, 0);
+
         DrawCard_ServerRpc(5);
+
+        if (isFirstTurn)
+        {
+            currentMana.Value = maxMana.Value;
+        }
+    }
+
+    [Rpc(SendTo.Server)]
+    public void StartTurn_ServerRpc()
+    {
+        bool isLeveling = false;
+        int levelUp = PlayerLevel.GetPlayerLevelUp(level.Value, experience.Value);
+        if (levelUp > 0)
+        {
+            isLeveling = true;
+            level.Value++;
+            experience.Value -= levelUp;
+
+            maxMana.Value += 2;
+
+            if (AI.Value)
+            {
+                GetComponent<AIController>().EquipCard();
+            }
+            else
+            {
+                isSelecting.Value = true;
+                UI.GetComponent<PlayerUIController>().StartEquipSelect();
+            }
+        }
+
+        if (!isLeveling)
+        {
+            AfterLevelup_ServerRpc();
+        }
+    }
+
+    [Rpc(SendTo.Server)]
+    public void AfterLevelup_ServerRpc()
+    {
+        currentMana.Value = maxMana.Value;
+        DrawCard_ServerRpc(1);
+    }
+
+    [Rpc(SendTo.Server)]
+    public void EndTurn_ServerRpc()
+    {
+        experience.Value += currentMana.Value * 15;
     }
 
     [Rpc(SendTo.Server)]
@@ -163,6 +259,12 @@ public class PlayerController : NetworkBehaviour
     {
         deck.Value = newDeck;
         isDeckSet.Value = true;
+    }
+
+    [Rpc(SendTo.Server)]
+    public void SetChampion_ServerRpc(NetworkObjectReference champion)
+    {
+        this.champion.Value = (NetworkObject)champion;
     }
 
     [Rpc(SendTo.Server)]
@@ -178,7 +280,7 @@ public class PlayerController : NetworkBehaviour
             Card c = deck.Value.cards[lastIndex];
             deck.Value.cards.RemoveAt(lastIndex);
             hand.Value.Add(c);
-            Debug.Log("deck: " + deck.Value.cards.Count + ", Hand: " + hand.Value.Count);
+            //Debug.Log("deck: " + deck.Value.cards.Count + ", Hand: " + hand.Value.Count);
         }
         HandValueChanged(previousValue, hand.Value);
     }
@@ -187,20 +289,21 @@ public class PlayerController : NetworkBehaviour
     public void PlayCardInit_ServerRpc(int handId)
     {
         Card c = hand.Value[handId];
-        if (c.cardInfo.currentMana < currentMana.Value) return;
+        if (currentMana.Value < c.cardInfo.mana) return;
 
-        //PlayCardCallBack callback = PlayCardCallBack;
         GameController.instance.PlayCard_ServerRpc(gameObject, hand.Value[handId].cardInfo.cardType, hand.Value[handId].cardInfo.GetId(), handId);
 
         return;
     }
 
-    public void PlayCardCallBack(CardPlaySuccess success, int handId = -1)
+    [Rpc(SendTo.Server)]
+    public void PlayCardCallBack_ServerRpc(CardPlaySuccess success, int handId = -1)
     {
         if(success == CardPlaySuccess.Success)
         {
             List<Card> pCards = hand.Value.ToList();
-            currentMana.Value -= hand.Value[handId].cardInfo.currentMana;
+            currentMana.Value -= hand.Value[handId].cardInfo.mana;
+            experience.Value += hand.Value[handId].cardInfo.mana * 10;
             hand.Value.RemoveAt(handId);
             HandValueChanged(pCards, hand.Value);
         }
@@ -231,5 +334,16 @@ public class PlayerController : NetworkBehaviour
     {
         //Debug.Log((AI.Value ? "AI -" : "Player -") + " Hand changed from " + previousValue.Count + " cards to " + newValue.Count + " cards");
         UI.GetComponent<PlayerUIController>().UpdateUI(newValue);
+    }
+
+    private void ManaValueChanged(int previousValue, int newValue)
+    {
+        GameController.instance.UpdatePlayerMana_ServerRpc(gameObject);
+    }
+
+    private void ExpValueChanged(int previousValue, int newValue)
+    {
+        Debug.Log(experience.Value + " " + level.Value);
+        GameController.instance.UpdatePlayerExp_ServerRpc(gameObject);
     }
 }

@@ -99,6 +99,11 @@ public class MainMenu : MonoBehaviour
         ChangeMenu(playLobby);
     }
 
+    public void CloseLobby()
+    {
+        OpenPlayMenu();
+    }
+
     public void OpenJoinLobby()
     {
         ChangeMenu(joinLobby);

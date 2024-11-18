@@ -42,9 +42,18 @@ public class Deck : INetworkSerializable, IEquatable<Deck>
         List<EquipCard> equips = new List<EquipCard>();
         List<Card> cards = new List<Card>();
 
-        for(int i = 0; i < GameManager.instance.deckSizeMin; i++)
+        for(int i = 0; i < 5; i++)
         {
-            cards.Add(CardDatabaseManager.instance.GetAllyCard(0));
+            equips.Add(CardDatabaseManager.instance.GetEquipCard(i).EquipClone());
+        }
+        for (int i = 0; i < 5; i++)
+        {
+            equips.Add(CardDatabaseManager.instance.GetEquipCard(4).EquipClone());
+        }
+
+        for (int i = 0; i < GameManager.instance.deckSizeMin; i++)
+        {
+            cards.Add(CardDatabaseManager.instance.GetAllyCard(0).AllyClone());
         }
 
         Deck deck = new Deck(champion, equips, cards);

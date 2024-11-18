@@ -43,6 +43,8 @@ public enum EffectTrigger
     OnEndOfTurn,
     OnEndOfYourTurn,
     OnEndOfEnemyTurn,
+    OnEquip,
+    OnUnequip,
     OnEnter,
     OnDeath,
     OnKill,
@@ -85,6 +87,7 @@ public enum CardBattleSuccess
 {
     Success,
     Fail,
+    ZeroAttack,
     CannotAttackYet,
     NoAttacksLeft,
     FirstObjectIncorrect,

@@ -722,7 +722,7 @@ MonoBehaviour:
       m_Calls:
       - m_Target: {fileID: 506468717}
         m_TargetAssemblyTypeName: MainMenu, Assembly-CSharp
-        m_MethodName: OpenOnline
+        m_MethodName: CloseLobby
         m_Mode: 1
         m_Arguments:
           m_ObjectArgument: {fileID: 0}

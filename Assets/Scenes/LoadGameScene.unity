@@ -588,9 +588,11 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   clientId: 0
-  _deckSizeMin: 25
-  _deckSizeMax: 40
-  _fieldAllyAmount: 5
+  _deckSizeMin: 40
+  _deckSizeMax: 50
+  _equipSizeMin: 0
+  _equipSizeMax: 10
+  _fieldAllyAmount: 6
 --- !u!4 &964406017
 Transform:
   m_ObjectHideFlags: 0

@@ -19,6 +19,12 @@ public class CardObjectUI : MonoBehaviour, IBeginDragHandler, IDragHandler, IEnd
     [HideInInspector]
     public NetworkObjectReference playerOwner;
 
+    private bool isSelecteable = false;
+    public bool isSelected = false;
+
+    [SerializeField]
+    private GameObject selectedImage;
+
     [SerializeField]
     private GameObject mana;
     [SerializeField]
@@ -38,23 +44,27 @@ public class CardObjectUI : MonoBehaviour, IBeginDragHandler, IDragHandler, IEnd
     private GameObject image;
     private RawImage imageComponent;
 
+    //attack <sprite=36>, health <sprite=10>, armor <sprite=33>, mana <sprite=25>,
+    [SerializeField]
+    private TextMeshProUGUI effText;
+
     void Start()
     {
         imageComponent = image.GetComponent<RawImage>();
         if (debugMode)
         {
             card = CardDatabaseManager.instance.GetAllyCard(debugId);
-            UpdateCard();
+            UpdateCard(true);
         }
     }
 
     void Update()
     {
         card.cardInfo.currentMana = card.cardInfo.mana;
-        if(card != null) UpdateCard(false);
+        if(card != null) UpdateCard(false, false, false);
     }
 
-    public void UpdateCard(bool setInfo = true)
+    public void UpdateCard(bool setInfo = true, bool setImage = true, bool setText = true)
     {
         switch (card.cardInfo.cardType)
         {
@@ -77,10 +87,9 @@ public class CardObjectUI : MonoBehaviour, IBeginDragHandler, IDragHandler, IEnd
                 return;
         }
 
-        if (setInfo)
-        {
-            SetInfo(card);
-        }
+        if (setInfo) SetName(card.cardInfo.name);
+        if (setImage) SetImage(card.cardInfo.name);
+        if (setText) SetEffect();
     }
 
     private void UpdateCardChampion()
@@ -94,7 +103,7 @@ public class CardObjectUI : MonoBehaviour, IBeginDragHandler, IDragHandler, IEnd
         SetAttack(newCard.allyStats.attack);
         SetHealth(newCard.allyStats.health);
 
-        SetInfo(newCard);
+        //SetInfo(newCard);
     }
     private void UpdateCardEquipment()
     {
@@ -104,7 +113,7 @@ public class CardObjectUI : MonoBehaviour, IBeginDragHandler, IDragHandler, IEnd
 
         EquipCard newCard = card as EquipCard;
 
-        SetInfo(newCard);
+        //SetInfo(newCard);
     }
     private void UpdateCardMinion()
     {
@@ -150,11 +159,6 @@ public class CardObjectUI : MonoBehaviour, IBeginDragHandler, IDragHandler, IEnd
         healthText.text = health.ToString();
     }
 
-    private void SetInfo(Card card)
-    {
-        SetImage(card.cardInfo.name);
-        SetName(card.cardInfo.name);
-    }
     private void SetImage(string name, string folder = "")
     {
         string path;
@@ -202,10 +206,19 @@ public class CardObjectUI : MonoBehaviour, IBeginDragHandler, IDragHandler, IEnd
         }
     }
 
+    private void SetEffect()
+    {
+        string str = CardUtilities.CreateText(card);
+        effText.text = str;
+    }
+
     private Vector3 startingPos = Vector3.zero;
 
     public void OnBeginDrag(PointerEventData eventData)
     {
+        if (isSelecteable) return;
+        if (((NetworkObject)playerOwner).GetComponent<PlayerController>().isSelecting.Value) return;
+
         startingPos = gameObject.transform.position;
 
         //Debug.Log("Drag Started");
@@ -213,12 +226,18 @@ public class CardObjectUI : MonoBehaviour, IBeginDragHandler, IDragHandler, IEnd
 
     public void OnDrag(PointerEventData eventData)
     {
+        if (isSelecteable) return;
+        if (((NetworkObject)playerOwner).GetComponent<PlayerController>().isSelecting.Value) return;
+        
         transform.position = Input.mousePosition;
     }
 
     public void OnEndDrag(PointerEventData eventData)
     {
-        if(transform.position.y > 200)
+        if (isSelecteable) return;
+        if (((NetworkObject)playerOwner).GetComponent<PlayerController>().isSelecting.Value) return;
+
+        if (transform.position.y > 200)
         {
             //Debug.Log("Play Started");
             ((NetworkObject)playerOwner).GetComponent<PlayerController>().PlayCardInit_ServerRpc(handId);
@@ -230,5 +249,18 @@ public class CardObjectUI : MonoBehaviour, IBeginDragHandler, IDragHandler, IEnd
         //Debug.Log("Dropped");
     }
 
+    public void SetSelectable(bool selectable = true)
+    {
+        isSelecteable = selectable;
+    }
 
+    public void CardClick()
+    {
+        if (isSelecteable)
+        {
+            isSelected = !isSelected;
+
+            selectedImage.SetActive(isSelected);
+        }
+    }
 }

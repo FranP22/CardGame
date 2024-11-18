@@ -24,9 +24,22 @@ public class PlayerSpawner : NetworkBehaviour
 
     private void OnLoadScene(string sceneName, LoadSceneMode loadSceneMode, List<ulong> clientsCompleted, List<ulong> clientsTimedOut)
     {
-        if (isStarted) return;
+        if (isStarted)
+        {
+            if(IsHost && sceneName == SceneManager.GetSceneByBuildIndex(3).name)
+            {
+                if (EndSceneController.instance != null)
+                {
+                    EndSceneController.instance.StartEndScene();
 
-        if(IsHost && sceneName == SceneManager.GetSceneByBuildIndex(2).name)
+                    isStarted = false;
+                }
+            }
+
+            return;
+        }
+
+        if (IsHost && sceneName == SceneManager.GetSceneByBuildIndex(2).name)
         {
             foreach (ulong id in clientsCompleted)
             {

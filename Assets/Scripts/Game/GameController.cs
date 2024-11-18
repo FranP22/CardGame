@@ -1,9 +1,12 @@
 //using System;
 //using System.Collections.Generic;
+using System.Collections;
 using System.Collections.Generic;
 using Unity.Mathematics;
 using Unity.Netcode;
 using UnityEngine;
+using UnityEngine.LowLevel;
+using UnityEngine.SceneManagement;
 
 public class GameController : NetworkBehaviour
 {
@@ -26,7 +29,9 @@ public class GameController : NetworkBehaviour
     [HideInInspector]
     private NetworkVariable<NetworkObjectReference> turnPlayer = new NetworkVariable<NetworkObjectReference>();
     [HideInInspector]
-    private NetworkVariable<NetworkObjectReference> playerWon = new NetworkVariable<NetworkObjectReference>();
+    public NetworkVariable<ulong> playerWonId = new NetworkVariable<ulong>();
+    [HideInInspector]
+    public NetworkVariable<ulong> playerLostId = new NetworkVariable<ulong>();
 
 
     private void Awake()
@@ -41,6 +46,11 @@ public class GameController : NetworkBehaviour
             Destroy(gameObject);
             return;
         }
+    }
+
+    private void Start()
+    {
+        DontDestroyOnLoad(gameObject);
     }
 
     private void Update()
@@ -95,7 +105,7 @@ public class GameController : NetworkBehaviour
                 break;
         }
 
-        Debug.Log((NetworkObject)p1.Value + " " + (NetworkObject)p2.Value);
+        //Debug.Log((NetworkObject)p1.Value + " " + (NetworkObject)p2.Value);
     }
 
     [Rpc(SendTo.Server)]
@@ -104,20 +114,14 @@ public class GameController : NetworkBehaviour
         int player = UnityEngine.Random.Range(0, 2);
         turnPlayer.Value = playerArray[player];
 
-        ((NetworkObject)p1.Value).GetComponent<PlayerController>().StartGame_ServerRpc();
-        ((NetworkObject)p2.Value).GetComponent<PlayerController>().StartGame_ServerRpc();
+        ((NetworkObject)p1.Value).GetComponent<PlayerController>().StartGame_ServerRpc(player == 0);
+        ((NetworkObject)p2.Value).GetComponent<PlayerController>().StartGame_ServerRpc(player == 1);
     }
 
     [Rpc(SendTo.Server)]
     public void AddPlayer_ServerRpc(NetworkObjectReference player)
     {
         playerArray.Add(player);
-    }
-
-    public bool IsPlayersTurn(NetworkObjectReference player)
-    {
-        if((NetworkObject)player == (NetworkObject)turnPlayer.Value) return true;
-        return false;
     }
 
     [Rpc(SendTo.Server)]
@@ -127,7 +131,7 @@ public class GameController : NetworkBehaviour
 
         if (!IsPlayersTurn(player) && handId != -1)
         {
-            pc.PlayCardCallBack(CardPlaySuccess.NotThePlayersTurn);
+            pc.PlayCardCallBack_ServerRpc(CardPlaySuccess.NotThePlayersTurn);
             return;
         }
 
@@ -141,7 +145,7 @@ public class GameController : NetworkBehaviour
         }
         else
         {
-            pc.PlayCardCallBack(CardPlaySuccess.Fail);
+            pc.PlayCardCallBack_ServerRpc(CardPlaySuccess.Fail);
         }
 
         
@@ -157,8 +161,20 @@ public class GameController : NetworkBehaviour
         CardObjectField attackerScript = attackerOb.GetComponent<CardObjectField>();
         CardObjectField defenderScript = defenderOb.GetComponent<CardObjectField>();
 
-        defenderScript.Damage(attacker, attackerScript.card.Value.allyStats.currentAttack);
-        attackerScript.Damage(defender, defenderScript.card.Value.allyStats.currentAttack);
+        defenderScript.Damage(attacker, attackerScript.card.Value.allyStats.attack);
+
+        bool attackerIsRanged = false;
+        foreach (CardKeyWord keyword in attackerScript.card.Value.keyWords)
+        {
+            if (keyword.keyword == CardKeyWords.Ranged)
+            {
+                attackerIsRanged = true;
+                break;
+            }
+        }
+
+        if(!attackerIsRanged)
+            attackerScript.Damage(defender, defenderScript.card.Value.allyStats.attack);
 
         attackerScript.attacksLeft.Value--;
     }
@@ -170,6 +186,8 @@ public class GameController : NetworkBehaviour
         {
             return;
         }
+
+        ((NetworkObject)player).GetComponent<PlayerController>().EndTurn_ServerRpc();
 
         int turnPlayerId = turnPlayer.Value.Equals(p1.Value) ? 1 : 2;
 
@@ -209,12 +227,12 @@ public class GameController : NetworkBehaviour
         if ((NetworkObject)playerEnded == (NetworkObject)p1.Value)
         {
             turnPlayer.Value = p2.Value;
-            ((NetworkObject)p2.Value).GetComponent<PlayerController>().DrawCard_ServerRpc(1);
+            ((NetworkObject)p2.Value).GetComponent<PlayerController>().StartTurn_ServerRpc();
         }
         if ((NetworkObject)playerEnded == (NetworkObject)p2.Value)
         {
             turnPlayer.Value = p1.Value;
-            ((NetworkObject)p1.Value).GetComponent<PlayerController>().DrawCard_ServerRpc(1);
+            ((NetworkObject)p1.Value).GetComponent<PlayerController>().StartTurn_ServerRpc();
         }
 
         int turnPlayerId = turnPlayer.Value.Equals(p1.Value) ? 1 : 2;
@@ -248,16 +266,87 @@ public class GameController : NetworkBehaviour
     [Rpc(SendTo.Server)]
     public void Defeat_ServerRpc(NetworkObjectReference player)
     {
-        if((NetworkObject)player == (NetworkObject)p1.Value)
+        ulong p1Id = ((NetworkObject)p1.Value).GetComponent<NetworkObject>().OwnerClientId;
+
+        ulong p2Id = 1;
+        if (!((NetworkObject)p2.Value).GetComponent<PlayerController>().IsAI())
         {
-            hasGameEnded.Value = true;
-            playerWon.Value = p2.Value;
+            p2Id = ((NetworkObject)p2.Value).GetComponent<NetworkObject>().OwnerClientId;
+        }
+
+        Debug.Log(p1Id + " " + p2Id);
+
+        if ((NetworkObject)player == (NetworkObject)p1.Value)
+        {
+            playerWonId.Value = p2Id;
+            playerLostId.Value = p1Id;
         }
         if ((NetworkObject)player == (NetworkObject)p2.Value)
         {
-            hasGameEnded.Value = true;
-            playerWon.Value = p1.Value;
+            playerWonId.Value = p1Id;
+            playerLostId.Value = p2Id;
         }
+
+        EndGame_ServerRpc();
+    }
+
+    [Rpc(SendTo.Server)]
+    public void EndGame_ServerRpc()
+    {
+        hasGameEnded.Value = true;
+        Debug.Log(playerWonId.Value + " " + playerLostId.Value);
+        NetworkManager.Singleton.SceneManager.LoadScene("EndScene", LoadSceneMode.Single);
+    }
+
+    /*IEnumerator EndGame(NetworkObjectReference playerWon, NetworkObjectReference playerLost)
+    {
+        ulong wonId = ((NetworkObject)playerWon).GetComponent<NetworkObject>().OwnerClientId;
+        ulong lostId = ((NetworkObject)playerLost).GetComponent<NetworkObject>().OwnerClientId;
+        NetworkManager.Singleton.SceneManager.LoadScene("EndScene", LoadSceneMode.Single);
+
+        yield return new WaitUntil(() => EndSceneController.instance != null);
+
+        Debug.Log(wonId + " " + lostId);
+        EndSceneController.instance.SetWinner(wonId, lostId);
+        //SteamManager.instance.Disconnect();
+    }*/
+
+    [Rpc(SendTo.Server)]
+    public void UpdatePlayerMana_ServerRpc(NetworkObjectReference player)
+    {
+        if (player.Equals(p1.Value))
+        {
+            GameBoard.instance.UpdateMana_ServerRpc(player, 1);
+        }
+
+        if (player.Equals(p2.Value))
+        {
+            GameBoard.instance.UpdateMana_ServerRpc(player, 2);
+        }
+
+        return;
+    }
+
+    [Rpc(SendTo.Server)]
+    public void UpdatePlayerExp_ServerRpc(NetworkObjectReference player)
+    {
+        if (player.Equals(p1.Value))
+        {
+            GameBoard.instance.UpdateExp_ServerRpc(player, 1);
+        }
+
+        if (player.Equals(p2.Value))
+        {
+            GameBoard.instance.UpdateExp_ServerRpc(player, 2);
+        }
+
+        return;
+    }
+
+    public bool IsPlayersTurn(NetworkObjectReference player)
+    {
+        if ((NetworkObject)player == (NetworkObject)turnPlayer.Value) return true;
+        return false;
     }
 
     public NetworkObjectReference GetCardPlayerRef(NetworkObjectReference card, bool otherPlayer = false)

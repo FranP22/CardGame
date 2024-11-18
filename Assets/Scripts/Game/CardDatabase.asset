@@ -27,7 +27,88 @@ MonoBehaviour:
       currentHealth: 0
     keyWords: []
     effects: []
-  equipmentCards: []
+  equipmentCards:
+  - cardInfo:
+      name: Shortsword
+      cardType: 4
+      cardElement: 0
+      cardClasses: 
+      mana: 0
+      currentMana: 0
+    levelReq: 0
+    equipStats:
+      attack: 1
+      health: 0
+      mana: 0
+      armor: 0
+    keyWords: []
+    effects: []
+  - cardInfo:
+      name: Gemstone
+      cardType: 4
+      cardElement: 0
+      cardClasses: 
+      mana: 0
+      currentMana: 0
+    levelReq: 0
+    equipStats:
+      attack: 0
+      health: 0
+      mana: 2
+      armor: 0
+    keyWords: []
+    effects: []
+  - cardInfo:
+      name: Simple Bow
+      cardType: 4
+      cardElement: 0
+      cardClasses: 
+      mana: 0
+      currentMana: 0
+    levelReq: 0
+    equipStats:
+      attack: 1
+      health: 0
+      mana: -1
+      armor: 0
+    keyWords:
+    - keyword: 1
+      level: 0
+    effects: []
+  - cardInfo:
+      name: Simple Shield
+      cardType: 4
+      cardElement: 0
+      cardClasses: 
+      mana: 0
+      currentMana: 0
+    levelReq: 0
+    equipStats:
+      attack: 0
+      health: 0
+      mana: 0
+      armor: 2
+    keyWords:
+    - keyword: 1
+      level: 0
+    effects: []
+  - cardInfo:
+      name: Cloth Amor
+      cardType: 4
+      cardElement: 0
+      cardClasses: 
+      mana: 0
+      currentMana: 0
+    levelReq: 0
+    equipStats:
+      attack: 0
+      health: 3
+      mana: 0
+      armor: 0
+    keyWords:
+    - keyword: 1
+      level: 0
+    effects: []
   magicCards: []
   allyCards:
   - cardInfo:
@@ -35,7 +116,7 @@ MonoBehaviour:
       cardType: 1
       cardElement: 0
       cardClasses: 
-      mana: 0
+      mana: 1
       currentMana: 0
     allyStats:
       attack: 1

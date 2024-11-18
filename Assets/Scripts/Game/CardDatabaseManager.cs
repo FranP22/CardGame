@@ -1,6 +1,7 @@
 using System;
 using System.Collections;
 using System.Collections.Generic;
+using System.Linq;
 using UnityEngine;
 
 public class CardDatabaseManager : MonoBehaviour
@@ -17,11 +18,14 @@ public class CardDatabaseManager : MonoBehaviour
 
     public List<ChampionCard> GetChampionCards()
     {
+        //List<ChampionCard> list = cardDatabase.championsCards.ToList();
         return cardDatabase.championsCards;
     }
     public ChampionCard GetChampionCard(int id)
     {
-        return cardDatabase.championsCards[id];
+        ChampionCard card = cardDatabase.championsCards[id].ChampionClone();
+        card.cardInfo.SetId(id);
+        return card;
     }
 
     public List<AllyCard> GetAllyCards()
@@ -30,7 +34,9 @@ public class CardDatabaseManager : MonoBehaviour
     }
     public AllyCard GetAllyCard(int id)
     {
-        return cardDatabase.allyCards[id];
+        AllyCard card = cardDatabase.allyCards[id].AllyClone();
+        card.cardInfo.SetId(id);
+        return card;
     }
 
     public List<AllyCard> GetSummonCards()
@@ -39,7 +45,9 @@ public class CardDatabaseManager : MonoBehaviour
     }
     public AllyCard GetSummonCard(int id)
     {
-        return cardDatabase.summonCards[id];
+        AllyCard card = cardDatabase.summonCards[id].AllyClone();
+        card.cardInfo.SetId(id);
+        return card;
     }
 
     public List<EquipCard> GetEquipCards()
@@ -48,7 +56,9 @@ public class CardDatabaseManager : MonoBehaviour
     }
     public EquipCard GetEquipCard(int id)
     {
-        return cardDatabase.equipmentCards[id];
+        EquipCard card = cardDatabase.equipmentCards[id].EquipClone();
+        card.cardInfo.SetId(id);
+        return card;
     }
 
     public List<MagicCard> GetMagicCards()
@@ -57,6 +67,7 @@ public class CardDatabaseManager : MonoBehaviour
     }
     public MagicCard GetMagicCard(int id)
     {
+        //MagicCard card = cardDatabase.magicCards[id]
         return cardDatabase.magicCards[id];
     }
 
